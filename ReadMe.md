@@ -10,7 +10,7 @@
 - Type II error rate: 4.5%
 - Effective on 90% of variants
 
-## Input/Output:-
+## Input/Output:
 - Example input: chr1, position 331523, A>G
 - For a known variant: an established phenotype is identified and reported  
 - For an unknown variant: model predicts either "likely benign" or "likely pathogenic"
@@ -27,10 +27,12 @@ Not all genetic variants are understood. This leaves a gap in our knowledgebase 
 ![23 and Me](./media/23me.jpg)
 
 ## Prediction overview
-A user first enters any mutation (chrom, pos, ref, alt) into the model using a GUI or Python script. The script looks up the variant in the existing database (pre-compiled) to see if clinical information has already been established for that mutation. If so, the effect is reported. If not, the Python script looks uses the entry to look up/calculate the additional features needed as input for the model. The model then predicts the clinical effect of the variant(s).
+A user first enters any mutation (chrom, pos, ref, alt) into the model using a GUI or Python script. The script looks up the variant in the existing database (pre-compiled) to see if clinical information has already been established for that mutation. If so, the effect is reported. If not, the Python script looks uses the entry to look up/calculate the additional features needed as input for the model. The model then predicts the clinical effect of the variant(s). Note: the ML portion of this pipeline is complete, and intended to be a proof-of-concept. Additional features are planned for the future. 
 
 ## Training library creation
-I wanted the training data to be as comprehensive as possible without limiting the user. Essentially, I wanted basic variant information (chromosome/position/ref/alt allele) to be sufficient to use the model. I instantiated my training datbase using the full ClinVar [dataset]([https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz.tbi), available on NCBI's website. I split multiallelic entries into separate lines using bcftools then ensured proper variant coordinate calling using left-alignment. This shifts the start position of a variant to their left-most location, potentially normalizing/fixing issues wiht indel coordinate calling and allowing for consistent variant identification across databases. From this starting point, I added annotations from other databases.<br>
+I wanted the training data to be as comprehensive as possible without limiting the user. Essentially, I wanted basic variant information (chromosome/position/ref/alt allele) to be sufficient to use the model. <br>
+
+I instantiated my training datbase using the full ClinVar [dataset]([https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz.tbi), available on NCBI's website and split multiallelic entries into separate lines using bcftools. To ensure proper variant coordinate calling, I "left-aligned" the dataset. This shifts the start position of a variant to their left-most location, potentially normalizing/fixing issues wiht indel coordinate calling and allowing for consistent variant identification across databases. From this starting point, I added annotations from other databases.<br>
 
 I then downloaded the [Gnomad](https://gnomad.broadinstitute.org/) genome and exome databases which are quite large. Gnomad exome has data from far more individuals (730,000), but fewer variants (~180 million) because the data are limited to exons. Gnomad genome, has only 1/10th the number of genoems (76,000) but far more variants overall (~760,000,000) due to the significanly higher number of nucleotides per individual. As the genomic data include variants in intronic and other non-coding sequences, the two databases have both disparate and overlapping data. To mine these datasets, I used the bcftools <i>annotate</i> function which matches variants in the Gnomad data to my own using the chromosome name, position, reference allele, and alternative allele. These annotations provided variant allele count, frequency, and the total allele count (size of the full per-allele dataset). I also collected the <b>"nhomalt"</b> metric which is the number of homozygous-alternative individuals, an extremely informative metric. To prevent duplicating or misannotating records, I left-aligned and normalized the combined dataset which identifies and removes duplicates.<br>
 
@@ -41,7 +43,7 @@ Next I added data from <b>dbNSFP</b> - an excellent [database](https://genomemed
 ## Data cleanup and imputation
 After exporting my final annotated .vcf file to .tsv (.gz!), there were a number of issues with data formatting. Specifically, disparate data fields form SpliceAI were combined into a single pipe-delimted string. Similarly, mutation type and conservation were all packed into a single entry like: "missense|OR4F5|ENST00000641515|protein_coding|+|36E>36G|69134A>G". Fortunately, unpacking these columns in Python was trivial and the resulting data file was ready for import into a Pandas data frame. 
 
-My <b>Jupyter notebook</b> ([cleanTrainingData.ipynb](./jupyter_notebooks/cleanTrainingData.ipynb)) demonstrates my process of data field engineering. Steps included one-hot encoding of mutation type: from a column of factors like "missense"/"non-coding"/"synonymous" dummy columns were produced, one per factor, with a 0 or 1 value indicating the mutation was or was not a missense mutation, was or was not a non-coding mutation, etc. Target classes were filtered to clear "benign" or "pathogenic" classifications. i.e. Entries with "conflicting effect" were removed, leaving only clear benign and pathgenic mutations. At that point, the initial data fields (Chrom, pos, ref, and alt) were removed as they are not directly informative.<br>
+My [Jupyter notebook](./jupyter_notebooks/cleanTrainingData.ipynb)) demonstrates my process of data field engineering. Steps included one-hot encoding of mutation type: from a column of factors like "missense"/"non-coding"/"synonymous" dummy columns were produced, one per factor, with a 0 or 1 value indicating the mutation was or was not a missense mutation, was or was not a non-coding mutation, etc. Target classes were filtered to clear "benign" or "pathogenic" classifications. i.e. Entries with "conflicting effect" were removed, leaving only clear benign and pathgenic mutations. At that point, the initial data fields (Chrom, pos, ref, and alt) were removed as they are not directly informative.<br>
 
 
 ## Training data
